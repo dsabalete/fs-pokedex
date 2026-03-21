@@ -15,6 +15,23 @@ module.exports = [
   },
   js.configs.recommended,
   {
+    files: ['jest.setup.js'],
+    languageOptions: {
+      ecmaVersion: 2018,
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+        ...globals.jest
+      }
+    },
+    rules: {
+      'indent': ['error', 2],
+      'linebreak-style': ['error', 'unix'],
+      'quotes': ['error', 'single'],
+      'semi': ['error', 'never']
+    }
+  },
+  {
     files: ['app.js'],
     languageOptions: {
       ecmaVersion: 2018,
