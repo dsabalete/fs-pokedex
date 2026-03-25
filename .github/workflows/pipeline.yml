@@ -46,14 +46,26 @@ jobs:
         run: curl -s -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
       - name: Wait for deployment
         run: |
-          for i in {1..10}; do
-            status=$(curl -s -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-              "https://api.render.com/v1/services/srv-d704uo7kijhs73d6jepg/deploys?limit=1" \
-              | jq -r '.[0].deploy.status // "unknown"')
-            echo "Attempt $i/10: status=$status"
-            [[ "$status" == "live" ]] && exit 0
-            [[ "$status" == "failed" || "$status" == "canceled" ]] && exit 1
+          for i in {1..30}; do
+            response=$(curl -s -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+              "https://api.render.com/v1/services/srv-d704uo7kijhs73d6jepg/deploys?limit=1")
+            status=$(echo "$response" | jq -r '.[0].deploy.status // "unknown"')
+            echo "Attempt $i/30: status=$status"
+            if [[ "$status" == "live" ]]; then
+              echo "Deployment is live!"
+              exit 0
+            fi
+            if [[ "$status" == "failed" || "$status" == "canceled" ]]; then
+              echo "Deployment failed or canceled."
+              echo "Response: $response"
+              exit 1
+            fi
+            # If stuck in build or update, show more details
+            if [[ "$status" == "build_in_progress" || "$status" == "update_in_progress" ]]; then
+              echo "Deployment details:"
+              echo "$response" | jq '.[0]'
+            fi
             sleep 10
           done
-          echo "Timeout"
+          echo "Timeout after 30 attempts"
           exit 1
