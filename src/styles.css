@@ -64,9 +64,22 @@ footer {
 .links {
   display: flex;
   justify-content: space-between;
+  margin-top: 20px;
   margin-bottom: 10px;
   text-decoration: none;
   width: 332px;
+}
+
+.links a {
+  color: #69f;
+  text-decoration: none;
+  background-color: #eee;
+  padding: 8px 16px;
+  border-radius: 5px;
+
+  &:hover {
+    background-color: #ddd;
+  }
 }
 
 .pokemon-page {
