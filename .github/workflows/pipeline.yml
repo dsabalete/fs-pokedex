@@ -9,25 +9,35 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  simple_deployment_pipeline:
+  ci:
     runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.skip.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - name: Install dependencies
-        run: npm install
-      - name: Check style
-        run: npm run eslint
-      - name: Run npm test
-        run: npm test
-      - name: Run npm build
-        run: npm run build
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-      - name: Run Playwright tests
-        run: npx playwright test
+      - name: Install dependencies, check style, run tests, and build
+        run: |
+          npm install
+          npm run eslint
+          npm test
+          npm run build
+      - name: Install Playwright Browsers and run tests
+        run: |
+          npx playwright install --with-deps
+          npx playwright test
+      - name: Check for \#skip in commit messages
+        id: skip
+        run: |
+          git fetch --prune --unshallow || true
+          SKIP=false
+          if git log --pretty=%B "${{ github.event.before }}".."${{ github.event.after }}" | grep -iq "#skip"; then
+            SKIP=true
+          fi
+          echo "skip=${SKIP}"
+          echo "::set-output name=skip::${SKIP}"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
@@ -43,10 +53,10 @@ jobs:
       #   env:
       #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Trigger deployment
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && steps.skip.outputs.skip == 'false' }}
         run: curl -s -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
       - name: Wait for deployment
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && steps.skip.outputs.skip == 'false' }}
         run: |
           for i in {1..30}; do
             response=$(curl -s -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
@@ -73,7 +83,8 @@ jobs:
           exit 1
 
   tag_release:
-    needs: [simple_deployment_pipeline]
+    needs: [ci]
+    if: ${{ github.event_name == 'push' && needs.ci.outputs.skip == 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -83,4 +94,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
-          DRY_RUN: false
+          DRY_RUN: true
