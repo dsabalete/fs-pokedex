@@ -110,3 +110,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
           DRY_RUN: true
+
+  notification:
+    needs: [ci]
+    if: ${{ github.event_name == 'push' && needs.ci.outputs.skip == 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send deployment notification
+        uses: sarisia/actions-status-discord@v1
+        if: always()
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
