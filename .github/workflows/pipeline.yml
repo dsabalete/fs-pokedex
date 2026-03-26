@@ -15,20 +15,7 @@ jobs:
       skip: ${{ steps.skip.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-      - name: Install dependencies, check style, run tests, and build
-        run: |
-          npm install
-          npm run eslint
-          npm test
-          npm run build
-      - name: Install Playwright Browsers and run tests
-        run: |
-          npx playwright install --with-deps
-          npx playwright test
-      - name: Check for #skip in commit messages
+      - name: Check for \#skip in commit messages
         id: skip
         run: |
           git fetch --prune --unshallow || true
@@ -53,6 +40,20 @@ jobs:
           fi
 
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install dependencies, check style, run tests, and build
+        run: |
+          npm install
+          npm run eslint
+          npm test
+          npm run build
+      - name: Install Playwright Browsers and run tests
+        run: |
+          npx playwright install --with-deps
+          npx playwright test
+
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
