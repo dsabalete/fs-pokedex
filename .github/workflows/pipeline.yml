@@ -28,16 +28,31 @@ jobs:
         run: |
           npx playwright install --with-deps
           npx playwright test
-      - name: Check for \#skip in commit messages
+      - name: Check for #skip in commit messages
         id: skip
         run: |
           git fetch --prune --unshallow || true
           SKIP=false
-          if git log --pretty=%B "${{ github.event.before }}".."${{ github.event.after }}" | grep -iq "#skip"; then
-            SKIP=true
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            RANGE="${{ github.event.before }}..${{ github.event.after }}"
           fi
-          echo "skip=${SKIP}"
-          echo "::set-output name=skip::${SKIP}"
+
+          if git rev-parse --verify "${RANGE%%..*}" >/dev/null 2>&1 && git rev-parse --verify "${RANGE##*..}" >/dev/null 2>&1; then
+            echo "Checking commit range: $RANGE"
+            if git log --pretty=%B "$RANGE" | grep -iq "#skip"; then
+              SKIP=true
+            fi
+          else
+            echo "Revision range invalid or unavailable ($RANGE), checking latest commit only."
+            if git log --pretty=%B -n 1 | grep -iq "#skip"; then
+              SKIP=true
+            fi
+          fi
+
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
