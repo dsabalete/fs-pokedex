@@ -116,8 +116,23 @@ jobs:
     if: ${{ github.event_name == 'push' && needs.ci.outputs.skip == 'false' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Send deployment notification
+      - name: Notify on failure (verbose)
+        if: ${{ needs.ci.result == 'failure' }}
         uses: sarisia/actions-status-discord@v1
-        if: always()
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          # Make failure notifications more verbose and noticeable
+          # Using common parameters that many Discord actions support
+          username: 'GitHub Actions (FAILURE)'
+          # If the action supports custom message/description, use them for verbosity
+          # If not, these will be ignored and defaults used
+          message: '❌ **BUILD/DEPLOYMENT FAILED** - Check commit details above to identify problematic commit'
+
+      - name: Notify on success (deployment)
+        if: ${{ needs.ci.result == 'success' }}
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          # Clean success notification for deployment
+          username: 'GitHub Actions (SUCCESS)'
+          message: '✅ **NEW VERSION DEPLOYED SUCCESSFULLY**'
