@@ -1,20 +1,18 @@
 name: Deployment pipeline
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
     branches: [main]
     types: [opened, synchronize]
 
 jobs:
-  ci:
+  check_skip:
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.skip.outputs.skip }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
       - name: Check for \#skip in commit messages
         id: skip
         run: |
@@ -40,26 +38,113 @@ jobs:
           fi
 
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v6
+
+  install:
+    needs: [check_skip]
+    if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
-      - name: Install dependencies, check style, run tests, and build
+      - name: Cache node_modules
+        id: cache
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+  setup_and_test:
+    needs: [install, check_skip]
+    if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Restore node_modules
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Check style and run tests
         run: |
-          npm install
           npm run eslint
           npm test
-          npm run build
-      - name: Install Playwright Browsers and run tests
-        run: |
-          npx playwright install --with-deps
-          npx playwright test
 
-      - uses: actions/upload-artifact@v4
+  build:
+    needs: [install, check_skip]
+    if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug deploy conditions
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Skip output: ${{ needs.check_skip.outputs.skip }}"
+          echo "E2E result: ${{ needs.e2e.result }}"
+          echo "Deploy will run: ${{ github.event_name == 'push' && needs.check_skip.outputs.skip == 'false' && needs.e2e.result == 'success' }}"
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Restore node_modules
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Build
+        run: npm run build
+
+  e2e:
+    needs: [setup_and_test, build, check_skip]
+    if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Restore node_modules
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+      - name: Install Playwright system dependencies      # 👈 always runs
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+      - name: Run Playwright tests
+        run: npx playwright test
+      - name: Upload Playwright report
         if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+  deploy:
+    needs: [e2e, check_skip]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      needs.check_skip.outputs.skip == 'false' &&
+      needs.e2e.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
       # - name: Deploy to Fly.io
       #   uses: superfly/flyctl-actions/setup-flyctl@master
       #   with:
@@ -69,10 +154,8 @@ jobs:
       #   env:
       #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Trigger deployment
-        if: ${{ github.event_name == 'push' && steps.skip.outputs.skip == 'false' }}
         run: curl -s -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
       - name: Wait for deployment
-        if: ${{ github.event_name == 'push' && steps.skip.outputs.skip == 'false' }}
         run: |
           for i in {1..30}; do
             response=$(curl -s -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
@@ -88,7 +171,6 @@ jobs:
               echo "Response: $response"
               exit 1
             fi
-            # If stuck in build or update, show more details
             if [[ "$status" == "build_in_progress" || "$status" == "update_in_progress" ]]; then
               echo "Deployment details:"
               echo "$response" | jq '.[0]'
@@ -99,13 +181,15 @@ jobs:
           exit 1
 
   tag_release:
-    needs: [ci]
-    if: ${{ github.event_name == 'push' && needs.ci.outputs.skip == 'false' }}
+    needs: [deploy]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
       - name: Bump version and push tag
-        if: ${{ github.event_name == 'push' }}
         uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,27 +197,24 @@ jobs:
           DRY_RUN: true
 
   notification:
-    needs: [ci]
-    if: ${{ github.event_name == 'push' && needs.ci.outputs.skip == 'false' }}
+    needs: [check_skip, setup_and_test, build, e2e, deploy]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      needs.check_skip.outputs.skip == 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: Notify on failure (verbose)
-        if: ${{ needs.ci.result == 'failure' }}
-        uses: sarisia/actions-status-discord@v1
+      - name: Notify on failure
+        if: ${{ needs.setup_and_test.result == 'failure' || needs.build.result == 'failure' || needs.e2e.result == 'failure' || needs.deploy.result == 'failure' }}
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          # Make failure notifications more verbose and noticeable
-          # Using common parameters that many Discord actions support
           username: 'GitHub Actions (FAILURE)'
-          # If the action supports custom message/description, use them for verbosity
-          # If not, these will be ignored and defaults used
           message: '❌ **BUILD/DEPLOYMENT FAILED** - Check commit details above to identify problematic commit'
-
-      - name: Notify on success (deployment)
-        if: ${{ needs.ci.result == 'success' }}
-        uses: sarisia/actions-status-discord@v1
+      - name: Notify on success
+        if: ${{ needs.setup_and_test.result == 'success' && needs.build.result == 'success' && needs.e2e.result == 'success' && needs.deploy.result == 'success' }}
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          # Clean success notification for deployment
           username: 'GitHub Actions (SUCCESS)'
           message: '✅ **NEW VERSION DEPLOYED SUCCESSFULLY**'
