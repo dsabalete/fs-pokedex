@@ -12,7 +12,7 @@ jobs:
     outputs:
       skip: ${{ steps.skip.outputs.skip }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
       - name: Check for \#skip in commit messages
         id: skip
         run: |
@@ -44,8 +44,8 @@ jobs:
     if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
       - name: Cache node_modules
@@ -63,8 +63,8 @@ jobs:
     if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
       - name: Restore node_modules
@@ -82,8 +82,14 @@ jobs:
     if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - name: Debug deploy conditions
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Skip output: ${{ needs.check_skip.outputs.skip }}"
+          echo "E2E result: ${{ needs.e2e.result }}"
+          echo "Deploy will run: ${{ github.event_name == 'push' && needs.check_skip.outputs.skip == 'false' && needs.e2e.result == 'success' }}"
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
       - name: Restore node_modules
@@ -99,8 +105,8 @@ jobs:
     if: ${{ needs.check_skip.outputs.skip == 'false' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
       - name: Restore node_modules
@@ -124,7 +130,7 @@ jobs:
         run: npx playwright test
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: playwright-report/
@@ -182,7 +188,7 @@ jobs:
       needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8
         env:
