@@ -210,11 +210,13 @@ jobs:
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           username: 'GitHub Actions (FAILURE)'
-          message: '❌ **BUILD/DEPLOYMENT FAILED** - Check commit details above to identify problematic commit'
+          content: '❌ **BUILD/DEPLOYMENT FAILED** - Check commit details above to identify problematic commit'
+          status: ${{ needs.setup_and_test.result }}
       - name: Notify on success
         if: ${{ needs.setup_and_test.result == 'success' && needs.build.result == 'success' && needs.e2e.result == 'success' && needs.deploy.result == 'success' }}
         uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           username: 'GitHub Actions (SUCCESS)'
-          message: '✅ **NEW VERSION DEPLOYED SUCCESSFULLY**'
+          content: '✅ **NEW VERSION DEPLOYED SUCCESSFULLY**'
+          status: success
