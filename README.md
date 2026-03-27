@@ -12,4 +12,11 @@ Start by running `npm install` inside the project folder
 `npm run build` to make a production build
 `npm run start-prod` to run your production build
 
-PRODUCTION URL: https://fs-pokedex-e2cf.onrender.com/
+PRODUCTION URL: https://fs-pokedex-e2cf.onrender.com
+
+---
+
+### Exercise 21
+
+- Repo: https://github.com/dsabalete/bloglist
+- URL: https://bloglist-rk2gnq-dawn-resonance-6647.fly.dev
