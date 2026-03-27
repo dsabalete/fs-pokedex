@@ -194,7 +194,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
-          DRY_RUN: true
 
   notification:
     needs: [check_skip, setup_and_test, build, e2e, deploy]
